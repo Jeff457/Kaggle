@@ -4,8 +4,12 @@
 #   Jeff Stanton 16547207
 # Team: Zotbots
 
+import numpy as np
+from sklearn import preprocessing
+
+import utilities as utils
 from sklearn.ensemble import AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 
 
 def train():
@@ -14,12 +18,14 @@ def train():
     Model's parameters are optimized using this data.
     Results are saved in a text file for submission to Kaggle.
     """
+    print("Getting data...")
+    X = np.genfromtxt('data/X_train.txt', delimiter=None)
+    Y = np.genfromtxt('data/Y_train.txt', delimiter=None)
 
-    # get data here from text file (x_train, y_train) - maybe split training test into 70/30 train/validation set
+    # scale features to unit variance and 0 mean
+    x_scaled = process_data(X)
 
-    # process data? need to determine which models would benefit from this
-
-    # instantiate mode
+    # instantiate models
     ada_boost = AdaBoostClassifier()
     gradient_boost = GradientBoostingClassifier()
     random_forest = RandomForestClassifier()
@@ -32,25 +38,31 @@ def train():
     # optimize hyper-parameters
     # ada_boost = optimize_parameters(ada_boost, ada_parameters, x, y)
     # gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x, y)
-    # random_forest = optimize_parameters(random_forest, forest_parameters, x, y)
+    print("Optimizing hyper-parameters...")
+    random_forest = optimize_parameters(random_forest, forest_parameters, X, Y)
 
-    # use trained model to make predictions on x_test
-    # average predictions
-    # save avg predictions to text file (I believe the instructions are on the latest discussion notebook)
+    print("Model score = {}".format(random_forest.score(X, Y)))
+    print("Highest scoring parameters: {}".format(random_forest.best_params_))
+    forest_results = np.vstack((np.arange(X.shape[0]), random_forest.predict(X))).T
 
-    pass
+    # ada_results = ada_boost.predict(X)
+    # gradient_results = gradient_boost.predict(X)
+    # forest_results = random_forest.predict(X)
+
+    # average predictions from all the models
+    # avg_results = average_predictions(ada_results, gradient_results, forest_results)
+    # submission = np.vstack((np.arange(X.shape[0]), avg_results)).T
+    # save(submission)
 
 
-def process_data(x, y):
+def process_data(x):
     """
-    Could be used to regularize data, add polynomial features, or whatever else we need to do.
-    Update docstring once/if we figure it out.
+    Transforms features into a standard normal distribution (zero mean and unit variance).
 
     :param x: features
-    :param y: labels
-    :return: processed x and y data sets
+    :return: processed data set
     """
-    pass
+    return preprocessing.scale(x)
 
 
 def get_parameters(model_name):
@@ -62,7 +74,14 @@ def get_parameters(model_name):
     """
     return {"AdaBoostClassifier": {},
             "GradientBoostingClassifier": {},
-            "RandomForestClassifier": {}}[model_name]
+            "RandomForestClassifier": {
+                "n_estimators": utils.gen_params(1, 51, 1),
+                "criterion": ["gini", "entropy"],
+                "min_samples_split": utils.gen_params(2, 31, 2),
+                "min_samples_leaf": utils.gen_params(1, 11, 1),
+                "oob_score": [True, False],
+                "warm_start": [True, False]
+            }}[model_name]
 
 
 def optimize_parameters(model, parameters, x, y):
@@ -75,8 +94,9 @@ def optimize_parameters(model, parameters, x, y):
     :param y: labels
     :return: the trained model
     """
-    search = GridSearchCV(model, param_grid=parameters, verbose=1, )
+    search = RandomizedSearchCV(estimator=model, param_distributions=parameters, verbose=1, n_jobs=-1)
     search.fit(x, y)
+
     return search  # return the trained model
 
 
@@ -89,7 +109,7 @@ def average_predictions(ada_results, gradient_results, forest_results):
     :param forest_results: predictions from RandomForestClassifier
     :return: numpy array of the averaged predictions
     """
-    pass
+    return np.mean(np.array([ada_results, gradient_results, forest_results]), axis=0)
 
 
 def save(result):
@@ -98,7 +118,9 @@ def save(result):
 
     :param result: an average of all the model's predictions
     """
-    pass
+    file_name = "y_submission.txt"
+    print("Saving submission to {}".format(file_name))
+    np.savetxt(file_name, result, '%d,%.5f', header='ID,Prob1', comments='', delimiter=',')
 
 
 if __name__ == "__main__":
