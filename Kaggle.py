@@ -45,7 +45,7 @@ def train():
     # display model name, the scoring model used, the model's score, and it's highest performing parameters
     for model in [random_forest]:
         print("{} {} score = {}".format(type(model).__name__, model.scorer_, model.score(x_train, y_train)))
-        print("{} highest scoring parameters: {}".format(model, model.best_params_))
+        print("{} highest scoring parameters: {}".format(type(model).__name__, model.best_params_))
 
     forest_results = np.vstack((np.arange(x_test.shape[0]), random_forest.predict(x_test))).T
 
