@@ -19,11 +19,13 @@ def train():
     Results are saved in a text file for submission to Kaggle.
     """
     print("Getting data...")
-    X = np.genfromtxt('data/X_train.txt', delimiter=None)
-    Y = np.genfromtxt('data/Y_train.txt', delimiter=None)
+    x_train = np.genfromtxt('data/X_train.txt', delimiter=None)
+    y_train = np.genfromtxt('data/Y_train.txt', delimiter=None)
+    x_test = np.genfromtxt('data/X_test.txt', delimiter=None)
 
     # scale features to unit variance and 0 mean
-    x_scaled = process_data(X)
+    x_train_scaled = process_data(x_train)
+    x_test_scaled = process_data(x_test)
 
     # instantiate models
     ada_boost = AdaBoostClassifier()
@@ -36,22 +38,25 @@ def train():
     forest_parameters = get_parameters(type(random_forest).__name__)
 
     # optimize hyper-parameters
-    # ada_boost = optimize_parameters(ada_boost, ada_parameters, x, y)
-    # gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x, y)
-    print("Optimizing hyper-parameters...")
-    random_forest = optimize_parameters(random_forest, forest_parameters, X, Y)
+    # ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
+    # gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
+    random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
 
-    print("Model score = {}".format(random_forest.score(X, Y)))
-    print("Highest scoring parameters: {}".format(random_forest.best_params_))
-    forest_results = np.vstack((np.arange(X.shape[0]), random_forest.predict(X))).T
+    # display model name, the scoring model used, the model's score, and it's highest performing parameters
+    for model in [random_forest]:
+        print("{} {} score = {}".format(model, model.scorer_, model.score(x_train, y_train)))
+        print("{} highest scoring parameters: {}".format(model, model.best_params_))
 
-    # ada_results = ada_boost.predict(X)
-    # gradient_results = gradient_boost.predict(X)
-    # forest_results = random_forest.predict(X)
+    forest_results = np.vstack((np.arange(x_test.shape[0]), random_forest.predict(x_test))).T
+
+    # predict on test data with trained models
+    # ada_results = ada_boost.predict(x_test)
+    # gradient_results = gradient_boost.predict(x_test)
+    # forest_results = random_forest.predict(x_test)
 
     # average predictions from all the models
     # avg_results = average_predictions(ada_results, gradient_results, forest_results)
-    # submission = np.vstack((np.arange(X.shape[0]), avg_results)).T
+    # submission = np.vstack((np.arange(x_test.shape[0]), avg_results)).T
     # save(submission)
 
 
@@ -94,7 +99,9 @@ def optimize_parameters(model, parameters, x, y):
     :param y: labels
     :return: the trained model
     """
-    search = RandomizedSearchCV(estimator=model, param_distributions=parameters, verbose=1, n_jobs=-1)
+    print("Optimizing hyper-parameters...")
+    search = RandomizedSearchCV(estimator=model, param_distributions=parameters, cv=10, scoring='roc_auc',
+                                verbose=1, n_jobs=-1)
     search.fit(x, y)
 
     return search  # return the trained model
@@ -120,7 +127,7 @@ def save(result):
     """
     file_name = "y_submission.txt"
     print("Saving submission to {}".format(file_name))
-    np.savetxt(file_name, result, '%d,%.5f', header='ID,Prob1', comments='', delimiter=',')
+    np.savetxt(file_name, result, '%d, %.5f', header='ID,Prob1', comments='', delimiter=',')
 
 
 if __name__ == "__main__":
