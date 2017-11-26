@@ -39,11 +39,11 @@ def train():
 
     # optimize hyper-parameters
     # ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
-    # gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
+    gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
     random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
 
     # display model name, the scoring model used, the model's score, and it's highest performing parameters
-    for model in [random_forest]:
+    for model in [random_forest, gradient_boost]:
         print("{} {} score = {}".format(type(model.estimator).__name__, model.scorer_, model.score(x_train, y_train)))
         print("{} highest scoring parameters: {}\n".format(type(model.estimator).__name__, model.best_params_))
 
@@ -78,7 +78,14 @@ def get_parameters(model_name):
     :return: a dictionary of hyper-parameters where the <key, value> is <parameter_name, [values]>
     """
     return {"AdaBoostClassifier": {},
-            "GradientBoostingClassifier": {},
+            "GradientBoostingClassifier": {
+            "loss": ['deviance','exponential'],
+              "n_estimators": utils.gen_params(40,201,10),
+             "learning_rate": utils.gen_params(0.4,1.2,0.1),
+             "min_samples_split": utils.gen_params(7,201,2),
+             "min_samples_leaf": utils.gen_params(3,201,1),
+             "max_features": ["sqrt","log2",None],
+              "max_depth":utils.gen_params(4,20,1)},
             "RandomForestClassifier": {
                 "n_estimators": utils.gen_params(1, 51, 1),
                 "criterion": ["gini", "entropy"],
