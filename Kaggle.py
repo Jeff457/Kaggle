@@ -1,15 +1,16 @@
 # Authors:
 #   Nicholas Alexander
 #   Samuel Levya
-#   Jeff Stanton 16547207
+#   Jeff Stanton
 # Team: Zotbots
 
 import numpy as np
 from sklearn import preprocessing
+from sklearn.ensemble import AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier
+from sklearn.externals import joblib
+from sklearn.model_selection import RandomizedSearchCV
 
 import utilities as utils
-from sklearn.ensemble import AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier
-from sklearn.model_selection import RandomizedSearchCV
 
 
 def train():
@@ -44,20 +45,21 @@ def train():
 
     # display model name, the scoring model used, the model's score, and it's highest performing parameters
     for model in [random_forest, gradient_boost]:
-        print("{} {} score = {}".format(type(model.estimator).__name__, model.scorer_, model.score(x_train, y_train)))
+        model_score = model.score(x_train, y_train)
+        print("{} {} score = {}".format(type(model.estimator).__name__, model.scorer_, model_score))
         print("{} highest scoring parameters: {}\n".format(type(model.estimator).__name__, model.best_params_))
-
-    forest_results = np.vstack((np.arange(x_test.shape[0]), random_forest.predict(x_test))).T
+        save_model(model, model_score)  # save fitted model and score
 
     # predict on test data with trained models
-    # ada_results = ada_boost.predict(x_test)
-    # gradient_results = gradient_boost.predict(x_test)
-    # forest_results = random_forest.predict(x_test)
+    # ada_results = ada_boost.predict_proba(x_test)
+    gradient_results = gradient_boost.predict_proba(x_test)
+    forest_results = random_forest.predict_proba(x_test)
 
     # average predictions from all the models
+    avg_results = np.mean(np.array([gradient_results, forest_results]), axis=0)
     # avg_results = average_predictions(ada_results, gradient_results, forest_results)
-    # submission = np.vstack((np.arange(x_test.shape[0]), avg_results)).T
-    # save(submission)
+    submission = np.vstack((np.arange(x_test.shape[0]), avg_results[:, 1])).T
+    save(submission)
 
 
 def process_data(x):
@@ -79,13 +81,13 @@ def get_parameters(model_name):
     """
     return {"AdaBoostClassifier": {},
             "GradientBoostingClassifier": {
-            "loss": ['deviance','exponential'],
-              "n_estimators": utils.gen_params(40,201,10),
-             "learning_rate": utils.gen_params(0.4,1.2,0.1),
-             "min_samples_split": utils.gen_params(7,201,2),
-             "min_samples_leaf": utils.gen_params(3,201,1),
-             "max_features": ["sqrt","log2",None],
-              "max_depth":utils.gen_params(4,20,1)},
+                "loss": ['deviance', 'exponential'],
+                "n_estimators": utils.gen_params(40, 201, 10),
+                "learning_rate": utils.gen_params(0.4, 1.2, 0.1),
+                "min_samples_split": utils.gen_params(7, 201, 2),
+                "min_samples_leaf": utils.gen_params(3, 201, 1),
+                "max_features": ["sqrt", "log2", None],
+                "max_depth": utils.gen_params(4, 20, 1)},
             "RandomForestClassifier": {
                 "n_estimators": utils.gen_params(1, 51, 1),
                 "criterion": ["gini", "entropy"],
@@ -108,10 +110,51 @@ def optimize_parameters(model, parameters, x, y):
     """
     print("Optimizing hyper-parameters...")
     search = RandomizedSearchCV(estimator=model, param_distributions=parameters, cv=10, scoring='roc_auc',
-                                verbose=1, n_jobs=-1)
+                                n_iter=200, verbose=10, n_jobs=-1)
     search.fit(x, y)
 
     return search  # return the trained model
+
+
+def save_model(model, model_score):
+    """
+    Checks if the model's current score is higher than its previous score.  If so, overwrites previous model.
+
+    :param model: the model to persist
+    :param model_score: the model's roc_auc score
+    """
+    print("Saving {}...".format(type(model).__name__))
+    score_file_name = type(model.estimator).__name__ + "Score.txt"
+    score_file = utils.get_file_path(score_file_name)
+
+    model_file_name = type(model.estimator).__name__ + ".pkl"
+    overwrite = False
+
+    # check if we've already persisted this model.  if so, check if new model scored higher
+    if score_file.exists():
+        with open(score_file_name, 'r') as file:
+            prev_score = float(file.read())
+        overwrite = prev_score < model_score
+
+    if overwrite or not score_file.exists():
+        joblib.dump(model, model_file_name)
+        with open(score_file_name, 'w') as file:
+            file.write(str(model_score))
+
+
+def get_model(model):
+    """
+    Gets the specified persisted model.
+
+    :param model: the model to retrieve
+    :return: a fitted estimator
+    """
+    model_file_name = type(model.estimator).__name__ + ".pkl"
+    model_file = utils.get_file_path(model_file_name)
+
+    if model_file.exists():
+        return joblib.load(model_file_name)
+    return None
 
 
 def average_predictions(ada_results, gradient_results, forest_results):
