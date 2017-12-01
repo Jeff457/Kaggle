@@ -83,7 +83,8 @@ def get_parameters(model_name):
                 #"base_estimator": [],
                 "n_estimators": utils.gen_params(700, 900, 50),
                 "learning_rate": utils.gen_params(0.10, 1.0, 0.10),
-                "algorithm": ["SAMME"]},
+                "algorithm": ["SAMME"],
+                "random_state": [0]},
             "GradientBoostingClassifier": {
                 "loss": ['deviance', 'exponential'],
                 "n_estimators": utils.gen_params(40, 201, 10),
