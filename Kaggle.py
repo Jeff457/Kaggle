@@ -1,6 +1,6 @@
 # Authors:
-#   Nicholas Alexander
-#   Samuel Levya
+#   Nick Jackson
+#   Sam Levya
 #   Jeff Stanton
 # Team: Zotbots
 
@@ -8,12 +8,13 @@ import numpy as np
 from sklearn import preprocessing
 from sklearn.ensemble import AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier
 from sklearn.externals import joblib
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.tree import DecisionTreeClassifier
 
 import utilities as utils
 
 
-def train():
+def train(load_models=False):
     """
     Extracts data from text files and stores in numpy arrays.
     Model's parameters are optimized using this data.
@@ -28,36 +29,43 @@ def train():
     x_train_scaled = process_data(x_train)
     x_test_scaled = process_data(x_test)
 
-    # instantiate models
-    ada_boost = AdaBoostClassifier()
-    gradient_boost = GradientBoostingClassifier()
-    random_forest = RandomForestClassifier()
+    if not load_models:
+        # instantiate models
+        ada_boost = AdaBoostClassifier(base_estimator=DecisionTreeClassifier(max_depth=10))
+        gradient_boost = GradientBoostingClassifier()
+        random_forest = RandomForestClassifier()
 
-    # get hyper-parameters
-    ada_parameters = get_parameters(type(ada_boost).__name__)
-    gradient_parameters = get_parameters(type(gradient_boost).__name__)
-    forest_parameters = get_parameters(type(random_forest).__name__)
+        # get hyper-parameters
+        ada_parameters = get_parameters(type(ada_boost).__name__)
+        gradient_parameters = get_parameters(type(gradient_boost).__name__)
+        forest_parameters = get_parameters(type(random_forest).__name__)
 
-    # optimize hyper-parameters
-    # ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
-    gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
-    random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
+        # optimize hyper-parameters
+        # ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
+        gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
+        # random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
 
-    # display model name, the scoring model used, the model's score, and it's highest performing parameters
-    for model in [random_forest, gradient_boost]:
-        model_score = model.score(x_train, y_train)
-        print("{} {} score = {}".format(type(model.estimator).__name__, model.scorer_, model_score))
-        print("{} highest scoring parameters: {}\n".format(type(model.estimator).__name__, model.best_params_))
-        save_model(model, model_score)  # save fitted model and score
+        # display model name, the scoring model used, the model's score, and it's highest performing parameters
+        for model in [gradient_boost]:
+            model_score = model.score(x_train, y_train)
+            # validation_score = model.score(x_val, y_val)
+            print("{} {} Train score = {}".format(type(model.estimator).__name__, model.scorer_, model_score))
+            # print("Validation score = {}".format(validation_score))
+            print("{} highest scoring parameters: {}\n".format(type(model.estimator).__name__, model.best_params_))
+            save_model(model, model_score)  # save fitted model and score
+    else:
+        ada_boost = get_model("AdaBoostClassifier")
+        gradient_boost = get_model("GradientBoostingClassifier")
+        random_forest = get_model("RandomForestClassifier")
 
     # predict on test data with trained models
-    # ada_results = ada_boost.predict_proba(x_test)
+    ada_results = ada_boost.predict_proba(x_test)
     gradient_results = gradient_boost.predict_proba(x_test)
     forest_results = random_forest.predict_proba(x_test)
 
     # average predictions from all the models
-    avg_results = np.mean(np.array([gradient_results, forest_results]), axis=0)
-    # avg_results = average_predictions(ada_results, gradient_results, forest_results)
+    # avg_results = np.mean(np.array([gradient_results, forest_results]), axis=0)
+    avg_results = average_predictions(ada_results, gradient_results, forest_results)
     submission = np.vstack((np.arange(x_test.shape[0]), avg_results[:, 1])).T
     save(submission)
 
@@ -79,12 +87,19 @@ def get_parameters(model_name):
     :param model_name: the name of the model/estimator
     :return: a dictionary of hyper-parameters where the <key, value> is <parameter_name, [values]>
     """
-    return {"AdaBoostClassifier": {
-                #"base_estimator": [],
-                "n_estimators": utils.gen_params(700, 900, 50),
-                "learning_rate": utils.gen_params(0.10, 1.0, 0.10),
-                "algorithm": ["SAMME"],
-                "random_state": [0]},
+    return {
+            "AdaBoostClassifier": {
+                # "base_estimator": [],
+                # base_estimator = DecisionTreeClassifier
+                "base_estimator__criterion": ["gini", "entropy"],
+                "base_estimator__min_samples_split": utils.gen_params(2, 31, 2),
+                "base_estimator__min_samples_leaf": utils.gen_params(1, 21, 2),
+                "base_estimator__max_features": ["sqrt", "log2", None],
+                "base_estimator__presort": [True, False],
+                "n_estimators": utils.gen_params(500, 1000, 50),
+                "learning_rate": utils.gen_params(0.001, 0.1, 0.001),
+                "algorithm": ["SAMME.R"]
+            },
             "GradientBoostingClassifier": {
                 "loss": ['deviance', 'exponential'],
                 "n_estimators": utils.gen_params(40, 201, 10),
@@ -92,15 +107,18 @@ def get_parameters(model_name):
                 "min_samples_split": utils.gen_params(7, 201, 2),
                 "min_samples_leaf": utils.gen_params(3, 201, 1),
                 "max_features": ["sqrt", "log2", None],
-                "max_depth": utils.gen_params(4, 20, 1)},
+                "max_depth": utils.gen_params(4, 20, 1)
+            },
             "RandomForestClassifier": {
-                "n_estimators": utils.gen_params(1, 51, 1),
+                "n_estimators": utils.gen_params(100, 501, 10),
                 "criterion": ["gini", "entropy"],
+                "max_features": ["sqrt", "log2", None],
                 "min_samples_split": utils.gen_params(2, 31, 2),
                 "min_samples_leaf": utils.gen_params(1, 11, 1),
                 "oob_score": [True, False],
                 "warm_start": [True, False]
-            }}[model_name]
+            }
+            }[model_name]
 
 
 def optimize_parameters(model, parameters, x, y):
@@ -128,7 +146,6 @@ def save_model(model, model_score):
     :param model: the model to persist
     :param model_score: the model's roc_auc score
     """
-    print("Saving {}...".format(type(model).__name__))
     score_file_name = type(model.estimator).__name__ + "Score.txt"
     score_file = utils.get_file_path(score_file_name)
 
@@ -139,9 +156,11 @@ def save_model(model, model_score):
     if score_file.exists():
         with open(score_file_name, 'r') as file:
             prev_score = float(file.read())
+        print("Previous score = {}, new score = {}".format(prev_score, model_score))
         overwrite = prev_score < model_score
 
     if overwrite or not score_file.exists():
+        print("Saving {}...".format(type(model.estimator).__name__))
         joblib.dump(model, model_file_name)
         with open(score_file_name, 'w') as file:
             file.write(str(model_score))
@@ -154,7 +173,7 @@ def get_model(model):
     :param model: the model to retrieve
     :return: a fitted estimator
     """
-    model_file_name = type(model.estimator).__name__ + ".pkl"
+    model_file_name = model + ".pkl"
     model_file = utils.get_file_path(model_file_name)
 
     if model_file.exists():
