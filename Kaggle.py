@@ -8,13 +8,14 @@ import numpy as np
 from sklearn import preprocessing
 from sklearn.ensemble import AdaBoostClassifier, GradientBoostingClassifier, RandomForestClassifier
 from sklearn.externals import joblib
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
 from sklearn.tree import DecisionTreeClassifier
 
 import utilities as utils
 
 
-def train(load_models=False):
+def train(load_models=False, get_train_val_score=False):
     """
     Extracts data from text files and stores in numpy arrays.
     Model's parameters are optimized using this data.
@@ -41,22 +42,25 @@ def train(load_models=False):
         forest_parameters = get_parameters(type(random_forest).__name__)
 
         # optimize hyper-parameters
-        # ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
+        ada_boost = optimize_parameters(ada_boost, ada_parameters, x_train, y_train)
         gradient_boost = optimize_parameters(gradient_boost, gradient_parameters, x_train, y_train)
-        # random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
+        random_forest = optimize_parameters(random_forest, forest_parameters, x_train, y_train)
 
         # display model name, the scoring model used, the model's score, and it's highest performing parameters
         for model in [gradient_boost]:
             model_score = model.score(x_train, y_train)
-            # validation_score = model.score(x_val, y_val)
             print("{} {} Train score = {}".format(type(model.estimator).__name__, model.scorer_, model_score))
             # print("Validation score = {}".format(validation_score))
             print("{} highest scoring parameters: {}\n".format(type(model.estimator).__name__, model.best_params_))
             save_model(model, model_score)  # save fitted model and score
     else:
+        print("Loading saved models...")
         ada_boost = get_model("AdaBoostClassifier")
         gradient_boost = get_model("GradientBoostingClassifier")
         random_forest = get_model("RandomForestClassifier")
+
+    if get_train_val_score:
+        train_validation_score(x_train, y_train, [ada_boost, gradient_boost, random_forest])
 
     # predict on test data with trained models
     ada_results = ada_boost.predict_proba(x_test)
@@ -64,10 +68,26 @@ def train(load_models=False):
     forest_results = random_forest.predict_proba(x_test)
 
     # average predictions from all the models
-    # avg_results = np.mean(np.array([gradient_results, forest_results]), axis=0)
     avg_results = average_predictions(ada_results, gradient_results, forest_results)
     submission = np.vstack((np.arange(x_test.shape[0]), avg_results[:, 1])).T
     save(submission)
+
+
+def train_validation_score(x_train, y_train, models):
+    # to determine train and validation scores for the report
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.3, random_state=42)
+
+    train_results = list()
+    validation_results = list()
+    for model in models:
+        train_results.append(model.predict_proba(x_train))
+        validation_results.append(model.predict_proba(x_val))
+
+    avg_y_train = average_predictions(train_results)[:, 1]
+    avg_y_val = average_predictions(validation_results)[:, 1]
+
+    print("Train Score = {}, Validation Score = {}".format(roc_auc_score(y_train, avg_y_train),
+                                                           roc_auc_score(y_val, avg_y_val)))
 
 
 def process_data(x):
@@ -133,7 +153,7 @@ def optimize_parameters(model, parameters, x, y):
     """
     print("Optimizing hyper-parameters...")
     search = RandomizedSearchCV(estimator=model, param_distributions=parameters, cv=10, scoring='roc_auc',
-                                n_iter=200, verbose=10, n_jobs=-1)
+                                n_iter=100, verbose=10, n_jobs=-1)
     search.fit(x, y)
 
     return search  # return the trained model
@@ -181,6 +201,10 @@ def get_model(model):
     return None
 
 
+def average_predictions(iterable):
+    return np.mean(np.array(iterable), axis=0)
+
+
 def average_predictions(ada_results, gradient_results, forest_results):
     """
     Averages (or by whatever means we decide) the predictions from all 3 models.
@@ -190,7 +214,7 @@ def average_predictions(ada_results, gradient_results, forest_results):
     :param forest_results: predictions from RandomForestClassifier
     :return: numpy array of the averaged predictions
     """
-    return np.mean(np.array([ada_results, gradient_results, forest_results]), axis=0)
+    return average_predictions([ada_results, gradient_results, forest_results])
 
 
 def save(result):
@@ -205,4 +229,4 @@ def save(result):
 
 
 if __name__ == "__main__":
-    train()
+    train(load_models=True, get_train_val_score=True)

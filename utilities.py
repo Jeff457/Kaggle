@@ -41,4 +41,4 @@ def get_file_path(file_name):
     :param file_name: file to get the absolute path to
     :return: Path to file_name
     """
-    return Path(os.path.dirname(os.path.abspath(__file__)) + file_name)
+    return Path(os.path.dirname(os.path.abspath(__file__)) + "/" + file_name)
