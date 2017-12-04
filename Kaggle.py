@@ -32,7 +32,7 @@ def train(load_models=False, get_train_val_score=False):
 
     if not load_models:
         # instantiate models
-        ada_boost = AdaBoostClassifier(base_estimator=DecisionTreeClassifier(max_depth=10))
+        ada_boost = AdaBoostClassifier(base_estimator=DecisionTreeClassifier(max_depth=15))
         gradient_boost = GradientBoostingClassifier()
         random_forest = RandomForestClassifier()
 
@@ -60,28 +60,39 @@ def train(load_models=False, get_train_val_score=False):
         random_forest = get_model("RandomForestClassifier")
 
     if get_train_val_score:
-        train_validation_score(x_train, y_train, [ada_boost, gradient_boost, random_forest])
+        train_validation_score(x_train, y_train, [random_forest, ada_boost, gradient_boost])
 
     # predict on test data with trained models
+    print("Making predictions...")
     ada_results = ada_boost.predict_proba(x_test)
     gradient_results = gradient_boost.predict_proba(x_test)
     forest_results = random_forest.predict_proba(x_test)
 
     # average predictions from all the models
-    avg_results = average_predictions(ada_results, gradient_results, forest_results)
+    avg_results = average_predictions([forest_results, ada_results, gradient_results], [0.4, 0.2, 0.4])
     submission = np.vstack((np.arange(x_test.shape[0]), avg_results[:, 1])).T
     save(submission)
 
 
 def train_validation_score(x_train, y_train, models):
+    """
+    Determines the average train and validation ROC AUC score for a given list of models.
+
+    :param x_train: given data set to split
+    :param y_train: given data set to split
+    :param models: a list of models to make predictions from
+    """
     # to determine train and validation scores for the report
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.3, random_state=42)
 
     train_results = list()
     validation_results = list()
-    for model in models:
+    for i, model in enumerate(models):
         train_results.append(model.predict_proba(x_train))
         validation_results.append(model.predict_proba(x_val))
+        print("Model = {}, Train = {}, Validation = {}".format(type(model.estimator).__name__,
+                                                               roc_auc_score(y_train, train_results[i][:, 1]),
+                                                               roc_auc_score(y_val, validation_results[i][:, 1])))
 
     avg_y_train = average_predictions(train_results)[:, 1]
     avg_y_val = average_predictions(validation_results)[:, 1]
@@ -134,7 +145,7 @@ def get_parameters(model_name):
                 "criterion": ["gini", "entropy"],
                 "max_features": ["sqrt", "log2", None],
                 "min_samples_split": utils.gen_params(2, 31, 2),
-                "min_samples_leaf": utils.gen_params(1, 11, 1),
+                "min_samples_leaf": utils.gen_params(1, 21, 1),
                 "oob_score": [True, False],
                 "warm_start": [True, False]
             }
@@ -151,8 +162,8 @@ def optimize_parameters(model, parameters, x, y):
     :param y: labels
     :return: the trained model
     """
-    print("Optimizing hyper-parameters...")
-    search = RandomizedSearchCV(estimator=model, param_distributions=parameters, cv=10, scoring='roc_auc',
+    print("Optimizing hyper-parameters for {}...".format(type(model).__name__))
+    search = RandomizedSearchCV(estimator=model, param_distributions=parameters, cv=5, scoring='roc_auc',
                                 n_iter=100, verbose=10, n_jobs=-1)
     search.fit(x, y)
 
@@ -201,20 +212,15 @@ def get_model(model):
     return None
 
 
-def average_predictions(iterable):
-    return np.mean(np.array(iterable), axis=0)
-
-
-def average_predictions(ada_results, gradient_results, forest_results):
+def average_predictions(iterable, weights):
     """
-    Averages (or by whatever means we decide) the predictions from all 3 models.
+        Averages (or by whatever means we decide) the predictions from all 3 models.
 
-    :param ada_results: predictions from AdaBoostClassifier
-    :param gradient_results: predictions from GradientBoostingClassifier
-    :param forest_results: predictions from RandomForestClassifier
-    :return: numpy array of the averaged predictions
-    """
-    return average_predictions([ada_results, gradient_results, forest_results])
+        :param iterable: a list of ndarray predictions
+        :return: numpy array of the averaged predictions
+        """
+    print("Averaging results...")
+    return np.average(np.array(iterable), axis=0, weights=weights)
 
 
 def save(result):
@@ -229,4 +235,4 @@ def save(result):
 
 
 if __name__ == "__main__":
-    train(load_models=True, get_train_val_score=True)
+    train(load_models=True, get_train_val_score=False)
