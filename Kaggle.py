@@ -1,6 +1,6 @@
 # Authors:
 #   Nick Jackson
-#   Sam Levya
+#   Sam Leyva
 #   Jeff Stanton
 # Team: Zotbots
 
@@ -120,8 +120,6 @@ def get_parameters(model_name):
     """
     return {
             "AdaBoostClassifier": {
-                # "base_estimator": [],
-                # base_estimator = DecisionTreeClassifier
                 "base_estimator__criterion": ["gini", "entropy"],
                 "base_estimator__min_samples_split": utils.gen_params(2, 31, 2),
                 "base_estimator__min_samples_leaf": utils.gen_params(1, 21, 2),
